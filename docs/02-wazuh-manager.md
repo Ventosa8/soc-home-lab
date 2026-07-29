@@ -42,10 +42,6 @@ Instalación completada sin errores. Dashboard accesible en `https://192.168.56.
 
 
 
-!\[Dashboard de Wazuh](../screenshots/wazuh-dashboard-overview.png)
-
-
-
 En las primeras 24h el propio sistema generó alertas de severidad media y baja,
 
 correspondientes a la actividad normal del manager recién desplegado.
