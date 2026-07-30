@@ -1,19 +1,3 @@
-\# Instalación del manager Wazuh
-
-
-
-\## Sistema base
-
-
-
-\- \*\*SO:\*\* Ubuntu Server 24.04 LTS
-
-\- \*\*RAM asignada:\*\* 3 GB
-
-\- \*\*IP:\*\* 192.168.56.10
-
-
-
 \## Instalación
 
 
@@ -45,4 +29,3 @@ Instalación completada sin errores. Dashboard accesible en `https://192.168.56.
 En las primeras 24h el propio sistema generó alertas de severidad media y baja,
 
 correspondientes a la actividad normal del manager recién desplegado.
-

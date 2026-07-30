@@ -85,4 +85,3 @@ comportamiento malicioso desde el punto de vista de un antivirus genérico.
 Se verificó que la fuente de descarga era un mirror oficial de kali.org antes
 
 de continuar.
-
