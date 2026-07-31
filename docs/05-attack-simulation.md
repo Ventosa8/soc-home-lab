@@ -1,8 +1,8 @@
-\# Fase 5: Simulación de ataques y verificación de detección
+# Fase 5: Simulación de ataques y verificación de detección
 
 
 
-\## Objetivo
+## Objetivo
 
 
 
@@ -16,7 +16,7 @@ observadas en el stack de telemetría actual.
 
 
 
-\## Preparación previa: recolección de Sysmon
+## Preparación previa: recolección de Sysmon
 
 
 
@@ -50,7 +50,7 @@ Hunting) la llegada de eventos de Sysmon.
 
 
 
-\### Justificación
+### Justificación
 
 
 
@@ -64,11 +64,11 @@ Seguridad estándar de Windows.
 
 
 
-\---
+---
 
 
 
-\## Ataque 1: Reconocimiento de red (Nmap)
+## Ataque 1: Reconocimiento de red (Nmap)
 
 
 
@@ -98,7 +98,7 @@ entrante antes de que llegue a ninguna aplicación.
 
 
 
-\### Análisis
+### Análisis
 
 
 
@@ -128,7 +128,7 @@ desplegar un IDS de red (ej. Suricata) monitorizando el segmento.
 
 
 
-\## Ataque 2: Fuerza bruta contra SMB
+## Ataque 2: Fuerza bruta contra SMB
 
 
 
@@ -136,7 +136,7 @@ desplegar un IDS de red (ej. Suricata) monitorizando el segmento.
 
 
 
-\### Elección de herramienta
+### Elección de herramienta
 
 
 
@@ -176,7 +176,7 @@ nxc smb 192.168.56.20 -u javier -p wordlist.txt
 
 
 
-\### Justificación
+### Justificación
 
 
 
@@ -190,7 +190,7 @@ protocolo, no solo ejecución de comandos.
 
 
 
-\### Detección en Wazuh
+### Detección en Wazuh
 
 
 
@@ -230,7 +230,7 @@ autenticación usado (`NTLM V2`):
 
 
 
-\### Efecto colateral observado
+### Efecto colateral observado
 
 
 
@@ -244,7 +244,7 @@ contramedida nativa del sistema operativo, registrable vía Event ID
 
 
 
-\### Análisis
+### Análisis
 
 
 
@@ -263,14 +263,3 @@ cualquier evento individual (nivel 5) por sí solo.
 
 
 \---
-
-
-
-\## Próximos ataques
-
-
-
-\- Acceso a credenciales vía LSASS (T1003)
-
-\- Movimiento lateral / ejecución remota (T1105 / T1021)
-
