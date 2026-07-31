@@ -41,7 +41,7 @@ Sin la integración de Sysmon, gran parte de la telemetría utilizada en esta fa
 nmap -sV -sC 192.168.56.20
 ```
 
-![Nmap scan filtrado](../images/nmap-scan-filtered.png)
+![Nmap scan filtrado](../screenshots/nmap-scan-filtered.png)
 
 ### Resultado
 
@@ -80,7 +80,7 @@ Inicialmente se intentó realizar el ataque utilizando **Hydra**:
 hydra -l javier -P wordlist.txt smb://192.168.56.20
 ```
 
-![Error de Hydra contra SMB2/3](../images/hydra-smb-error.png)
+![Error de Hydra contra SMB2/3](../screenshots/hydra-smb-error.png)
 
 La herramienta presentó problemas de compatibilidad con **SMB2/SMB3**, protocolo utilizado por defecto en Windows 10.
 
@@ -90,7 +90,7 @@ Por este motivo se sustituyó por **NetExec (nxc)**, herramienta actualmente má
 nxc smb 192.168.56.20 -u javier -p wordlist.txt
 ```
 
-![Ataque de fuerza bruta exitoso con nxc](../images/nxc-smb-bruteforce-success.png)
+![Ataque de fuerza bruta exitoso con nxc](../screenshots/nxc-smb-bruteforce-success.png)
 
 ### Justificación
 
@@ -121,14 +121,14 @@ La actividad fue detectada correctamente por Wazuh mediante varios niveles de re
   - **Nivel:** 6
   - Detectó el inicio de sesión remoto exitoso una vez encontrada la contraseña válida.
 
-![Correlación de alertas de fuerza bruta en Wazuh](../images/wazuh-bruteforce-correlation.png)
+![Correlación de alertas de fuerza bruta en Wazuh](../screenshots/wazuh-bruteforce-correlation.png)
 
 El detalle del evento confirmó:
 
 - Dirección IP de origen: **192.168.56.30** (Kali Linux).
 - Protocolo de autenticación: **NTLM V2**.
 
-![Detalle del evento de logon exitoso](../images/wazuh-logon-success-detail.png)
+![Detalle del evento de logon exitoso](../screenshots/wazuh-logon-success-detail.png)
 
 ---
 
