@@ -6,31 +6,31 @@
 
 
 
-Simular técnicas de ataque reales desde la VM de Kali contra el endpoint 
+Simular técnicas de ataque reales desde la máquina atacante (Kali) contra 
 
-Windows, y verificar la capacidad de detección del SIEM (Wazuh), 
+el endpoint Windows, y verificar la capacidad de detección del SIEM 
 
-documentando tanto los éxitos como las limitaciones observadas en el 
+(Wazuh), documentando tanto los aciertos como las limitaciones 
 
-stack de telemetría actual.
-
-
-
-\## Preparación previa
+observadas en el stack de telemetría actual.
 
 
 
-Antes del primer ataque se revisó el `ossec.conf` del agente Windows, 
-
-confirmando que el canal `Security` ya estaba configurado, pero \*\*Sysmon 
-
-no estaba siendo recolectado\*\* — se añadió el bloque `<localfile>` 
-
-correspondiente y se reinició el servicio del agente.
+\## Preparación previa: recolección de Sysmon
 
 
 
-​```xml
+Antes de lanzar cualquier ataque, se revisó el `ossec.conf` del agente 
+
+Windows. El canal `Security` ya estaba configurado, pero \*\*Sysmon no 
+
+estaba siendo recolectado por el agente\*\* — se añadió el bloque 
+
+correspondiente:
+
+
+
+```xml
 
 <localfile>
 
@@ -40,13 +40,31 @@ correspondiente y se reinició el servicio del agente.
 
 </localfile>
 
-​```
+```
 
 
 
-Tras el cambio, se confirmó en Wazuh (Threat Hunting) la llegada de 
+Tras reiniciar el servicio del agente, se confirmó en Wazuh (Threat 
 
-eventos de Sysmon.
+Hunting) la llegada de eventos de Sysmon.
+
+
+
+\### Justificación
+
+
+
+Sin este paso, gran parte de la detección buscada en esta fase (creación 
+
+de procesos, acceso a LSASS, conexiones salientes) habría sido invisible 
+
+para el SIEM, ya que dependía por completo de Sysmon y no del log de 
+
+Seguridad estándar de Windows.
+
+
+
+\---
 
 
 
@@ -54,15 +72,17 @@ eventos de Sysmon.
 
 
 
-\*\*MITRE ATT\&CK:\*\* T1046 - Network Service Scanning
+\*\*Técnica MITRE ATT\&CK:\*\* T1046 - Network Service Scanning
 
 
 
-​```bash
+\*\*Comando ejecutado:\*\*
+
+```bash
 
 nmap -sV -sC 192.168.56.20
 
-​```
+```
 
 
 
@@ -70,31 +90,41 @@ nmap -sV -sC 192.168.56.20
 
 
 
-\*\*Resultado:\*\* Sin detección en Wazuh.
+\*\*Resultado:\*\* sin detección en Wazuh. Los 1000 puertos escaneados 
+
+aparecen como `filtered` — el Firewall de Windows descarta el tráfico 
+
+entrante antes de que llegue a ninguna aplicación.
 
 
 
-\*\*Análisis:\*\* El Firewall de Windows filtra todo el tráfico entrante 
-
-(`1000 filtered tcp ports`), por lo que Nmap no logra completar ningún 
-
-handshake TCP. Sysmon (Event ID 3, Network Connection) solo audita 
-
-conexiones \*\*salientes\*\* iniciadas por procesos del propio sistema, no 
-
-intentos de conexión entrantes descartados por el firewall antes de 
-
-llegar a ninguna aplicación — de ahí que no se genere ningún evento.
+\### Análisis
 
 
 
-Esto constituye una \*\*brecha de detección\*\* identificada: para cubrir 
+Sysmon (Event ID 3, Network Connection) audita conexiones \*\*salientes\*\* 
 
-este vector sería necesario habilitar el logging del propio Firewall de 
+iniciadas por procesos del propio sistema, no intentos de conexión 
 
-Windows (Windows Filtering Platform, Event ID 5157) o desplegar un IDS 
+entrantes bloqueados por el firewall. Al no completarse ningún handshake 
 
-de red (ej. Suricata) monitorizando el segmento.
+TCP, no hay ningún proceso que registre la conexión, y por tanto no se 
+
+genera ningún evento.
+
+
+
+Esto se documenta como una \*\*brecha de detección\*\* real del stack 
+
+actual: para cubrir este vector haría falta habilitar el logging propio 
+
+del Firewall de Windows (Windows Filtering Platform, Event ID 5157) o 
+
+desplegar un IDS de red (ej. Suricata) monitorizando el segmento.
+
+
+
+\---
 
 
 
@@ -102,11 +132,11 @@ de red (ej. Suricata) monitorizando el segmento.
 
 
 
-\*\*MITRE ATT\&CK:\*\* T1110 - Brute Force
+\*\*Técnica MITRE ATT\&CK:\*\* T1110 - Brute Force
 
 
 
-\### Herramienta
+\### Elección de herramienta
 
 
 
@@ -116,13 +146,11 @@ Se intentó primero con Hydra, que falló por incompatibilidad con SMB2/3
 
 
 
-​```bash
+```bash
 
 hydra -l javier -P wordlist.txt smb://192.168.56.20
 
-\# \[ERROR] invalid reply from target smb://192.168.56.20:445/
-
-​```
+```
 
 
 
@@ -130,17 +158,17 @@ hydra -l javier -P wordlist.txt smb://192.168.56.20
 
 
 
-Se sustituyó por \*\*NetExec (nxc)\*\*, herramienta estándar actual para 
+Se sustituyó por \*\*NetExec (nxc)\*\*, herramienta actual de referencia 
 
-pentesting de SMB:
+para pentesting de SMB, que sí soporta SMB2/3 correctamente:
 
 
 
-​```bash
+```bash
 
 nxc smb 192.168.56.20 -u javier -p wordlist.txt
 
-​```
+```
 
 
 
@@ -148,19 +176,41 @@ nxc smb 192.168.56.20 -u javier -p wordlist.txt
 
 
 
+\### Justificación
+
+
+
+Este cambio de herramienta se documenta explícitamente porque refleja un 
+
+problema real de compatibilidad entre herramientas ofensivas "clásicas" 
+
+y versiones modernas de Windows — un matiz que demuestra comprensión del 
+
+protocolo, no solo ejecución de comandos.
+
+
+
 \### Detección en Wazuh
 
 
 
-| Rule ID | Descripción | Nivel |
+La detección funcionó en tres niveles distintos:
 
-|---|---|---|
 
-| 60122 | Logon Failure - Unknown user or bad password | 5 |
 
-| 60204 | Multiple Windows Logon Failures (correlación) | 10 |
+\- \*\*`Logon Failure - Unknown user or bad password`\*\* (rule.id `60122`, 
 
-| 92652 | Successful Remote Logon | 6 |
+&#x20; nivel 5) — un evento por cada intento fallido.
+
+\- \*\*`Multiple Windows Logon Failures`\*\* (rule.id `60204`, nivel 10) — 
+
+&#x20; correlación automática del patrón de ataque, mucho más visible que 
+
+&#x20; los eventos individuales.
+
+\- \*\*`Successful Remote Logon`\*\* (rule.id `92652`, nivel 6) — el logon 
+
+&#x20; exitoso final, tras encontrar la contraseña correcta.
 
 
 
@@ -170,7 +220,7 @@ nxc smb 192.168.56.20 -u javier -p wordlist.txt
 
 El detalle del evento de logon exitoso confirma el origen del ataque 
 
-(`ipAddress: 192.168.56.30`, la IP de la VM de Kali) y el paquete de 
+(`ipAddress: 192.168.56.30`, la IP de la máquina Kali) y el paquete de 
 
 autenticación usado (`NTLM V2`):
 
@@ -188,7 +238,9 @@ Tras superar el umbral de intentos fallidos, Windows bloqueó
 
 automáticamente la cuenta (`STATUS\_ACCOUNT\_LOCKED\_OUT`) — una 
 
-contramedida nativa del sistema operativo, registrable vía Event ID 4740.
+contramedida nativa del sistema operativo, registrable vía Event ID 
+
+4740\.
 
 
 
@@ -196,27 +248,29 @@ contramedida nativa del sistema operativo, registrable vía Event ID 4740.
 
 
 
-La detección funcionó en tres niveles distintos: el evento individual de 
+La secuencia completa observada — fallos repetidos → alerta de 
 
-fallo, la correlación automática de patrón de ataque (nivel 10, mucho 
+correlación → bloqueo de cuenta → login exitoso tras desbloqueo — 
 
-más visible que un evento aislado de nivel 5), y el logon exitoso final. 
+reproduce la firma típica de un ataque de fuerza bruta exitoso tal como 
 
-La secuencia completa — fallos repetidos → alerta de correlación → 
+la vería un analista SOC en un caso real, y demuestra que la 
 
-bloqueo de cuenta → éxito tras desbloqueo — reproduce la firma típica de 
+correlación de eventos (nivel 10) aporta muchísima más señal que 
 
-un ataque de fuerza bruta exitoso tal como lo vería un analista SOC en 
-
-un caso real.
+cualquier evento individual (nivel 5) por sí solo.
 
 
 
-\## Próximos pasos
+\---
 
 
 
-\- Ataque 3: acceso a credenciales vía LSASS (T1003)
+\## Próximos ataques
 
-\- Ataque 4: movimiento lateral / ejecución remota (T1105 / T1021)
+
+
+\- Acceso a credenciales vía LSASS (T1003)
+
+\- Movimiento lateral / ejecución remota (T1105 / T1021)
 
