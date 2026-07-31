@@ -1,265 +1,155 @@
 # Fase 5: Simulación de ataques y verificación de detección
 
-
-
 ## Objetivo
 
-
-
-Simular técnicas de ataque reales desde la máquina atacante (Kali) contra 
-
-el endpoint Windows, y verificar la capacidad de detección del SIEM 
-
-(Wazuh), documentando tanto los aciertos como las limitaciones 
-
-observadas en el stack de telemetría actual.
-
-
-
-## Preparación previa: recolección de Sysmon
-
-
-
-Antes de lanzar cualquier ataque, se revisó el `ossec.conf` del agente 
-
-Windows. El canal `Security` ya estaba configurado, pero \*\*Sysmon no 
-
-estaba siendo recolectado por el agente\*\* — se añadió el bloque 
-
-correspondiente:
-
-
-
-```xml
-
-<localfile>
-
-&#x20; <location>Microsoft-Windows-Sysmon/Operational</location>
-
-&#x20; <log\_format>eventchannel</log\_format>
-
-</localfile>
-
-```
-
-
-
-Tras reiniciar el servicio del agente, se confirmó en Wazuh (Threat 
-
-Hunting) la llegada de eventos de Sysmon.
-
-
-
-### Justificación
-
-
-
-Sin este paso, gran parte de la detección buscada en esta fase (creación 
-
-de procesos, acceso a LSASS, conexiones salientes) habría sido invisible 
-
-para el SIEM, ya que dependía por completo de Sysmon y no del log de 
-
-Seguridad estándar de Windows.
-
-
+Simular técnicas de ataque reales desde la máquina atacante (Kali Linux) contra el endpoint Windows y verificar la capacidad de detección del SIEM (Wazuh), documentando tanto las detecciones obtenidas como las limitaciones observadas en la telemetría disponible.
 
 ---
 
+## Preparación previa: recolección de eventos de Sysmon
 
+Antes de iniciar las pruebas de ataque, se revisó la configuración del agente de Wazuh instalado en Windows.
 
-## Ataque 1: Reconocimiento de red (Nmap)
+El canal **Security** ya estaba siendo monitorizado, pero el agente **no estaba recopilando los eventos de Sysmon**, imprescindibles para detectar actividad relacionada con creación de procesos, conexiones de red y otras acciones avanzadas.
 
+Se añadió el siguiente bloque al archivo `ossec.conf`:
 
-
-\*\*Técnica MITRE ATT\&CK:\*\* T1046 - Network Service Scanning
-
-
-
-\*\*Comando ejecutado:\*\*
-
-```bash
-
-nmap -sV -sC 192.168.56.20
-
+```xml
+<localfile>
+  <location>Microsoft-Windows-Sysmon/Operational</location>
+  <log_format>eventchannel</log_format>
+</localfile>
 ```
 
-
-
-!\[Nmap scan filtrado](../images/nmap-scan-filtered.png)
-
-
-
-\*\*Resultado:\*\* sin detección en Wazuh. Los 1000 puertos escaneados 
-
-aparecen como `filtered` — el Firewall de Windows descarta el tráfico 
-
-entrante antes de que llegue a ninguna aplicación.
-
-
-
-### Análisis
-
-
-
-Sysmon (Event ID 3, Network Connection) audita conexiones \*\*salientes\*\* 
-
-iniciadas por procesos del propio sistema, no intentos de conexión 
-
-entrantes bloqueados por el firewall. Al no completarse ningún handshake 
-
-TCP, no hay ningún proceso que registre la conexión, y por tanto no se 
-
-genera ningún evento.
-
-
-
-Esto se documenta como una \*\*brecha de detección\*\* real del stack 
-
-actual: para cubrir este vector haría falta habilitar el logging propio 
-
-del Firewall de Windows (Windows Filtering Platform, Event ID 5157) o 
-
-desplegar un IDS de red (ej. Suricata) monitorizando el segmento.
-
-
-
-\---
-
-
-
-## Ataque 2: Fuerza bruta contra SMB
-
-
-
-\*\*Técnica MITRE ATT\&CK:\*\* T1110 - Brute Force
-
-
-
-### Elección de herramienta
-
-
-
-Se intentó primero con Hydra, que falló por incompatibilidad con SMB2/3 
-
-(protocolo usado por defecto en Windows 10):
-
-
-
-```bash
-
-hydra -l javier -P wordlist.txt smb://192.168.56.20
-
-```
-
-
-
-!\[Error de Hydra contra SMB2/3](../images/hydra-smb-error.png)
-
-
-
-Se sustituyó por \*\*NetExec (nxc)\*\*, herramienta actual de referencia 
-
-para pentesting de SMB, que sí soporta SMB2/3 correctamente:
-
-
-
-```bash
-
-nxc smb 192.168.56.20 -u javier -p wordlist.txt
-
-```
-
-
-
-!\[Ataque de fuerza bruta exitoso con nxc](../images/nxc-smb-bruteforce-success.png)
-
-
+Tras reiniciar el servicio del agente, se verificó en **Threat Hunting** la correcta recepción de eventos procedentes de Sysmon.
 
 ### Justificación
 
+Este paso era imprescindible para que Wazuh pudiera detectar parte de la actividad generada durante las pruebas.
 
+Sin la integración de Sysmon, gran parte de la telemetría utilizada en esta fase habría permanecido invisible para el SIEM, ya que el registro de Seguridad estándar de Windows no proporciona el mismo nivel de detalle.
 
-Este cambio de herramienta se documenta explícitamente porque refleja un 
+---
 
-problema real de compatibilidad entre herramientas ofensivas "clásicas" 
+# Ataque 1: Reconocimiento de red (Nmap)
 
-y versiones modernas de Windows — un matiz que demuestra comprensión del 
+**Técnica MITRE ATT&CK:** T1046 – Network Service Scanning
 
-protocolo, no solo ejecución de comandos.
+### Comando ejecutado
 
+```bash
+nmap -sV -sC 192.168.56.20
+```
 
+![Nmap scan filtrado](../images/nmap-scan-filtered.png)
 
-### Detección en Wazuh
+### Resultado
 
+No se generó ninguna alerta en Wazuh.
 
-
-La detección funcionó en tres niveles distintos:
-
-
-
-\- \*\*`Logon Failure - Unknown user or bad password`\*\* (rule.id `60122`, 
-
-&#x20; nivel 5) — un evento por cada intento fallido.
-
-\- \*\*`Multiple Windows Logon Failures`\*\* (rule.id `60204`, nivel 10) — 
-
-&#x20; correlación automática del patrón de ataque, mucho más visible que 
-
-&#x20; los eventos individuales.
-
-\- \*\*`Successful Remote Logon`\*\* (rule.id `92652`, nivel 6) — el logon 
-
-&#x20; exitoso final, tras encontrar la contraseña correcta.
-
-
-
-!\[Correlación de alertas de fuerza bruta en Wazuh](../images/wazuh-bruteforce-correlation.png)
-
-
-
-El detalle del evento de logon exitoso confirma el origen del ataque 
-
-(`ipAddress: 192.168.56.30`, la IP de la máquina Kali) y el paquete de 
-
-autenticación usado (`NTLM V2`):
-
-
-
-!\[Detalle del evento de logon exitoso](../images/wazuh-logon-success-detail.png)
-
-
-
-### Efecto colateral observado
-
-
-
-Tras superar el umbral de intentos fallidos, Windows bloqueó 
-
-automáticamente la cuenta (`STATUS\_ACCOUNT\_LOCKED\_OUT`) — una 
-
-contramedida nativa del sistema operativo, registrable vía Event ID 
-
-4740\.
-
-
+El escaneo mostró los **1000 puertos en estado `filtered`**, indicando que el Firewall de Windows descartó todas las conexiones entrantes antes de que alcanzaran cualquier servicio del sistema.
 
 ### Análisis
 
+Sysmon únicamente registra conexiones **salientes** iniciadas por procesos locales (Event ID 3).
 
+En este caso, las conexiones procedentes de Kali fueron bloqueadas directamente por el Firewall de Windows, por lo que:
 
-La secuencia completa observada — fallos repetidos → alerta de 
+- No se completó ningún handshake TCP.
+- Ningún proceso de Windows llegó a gestionar la conexión.
+- Sysmon no generó ningún evento.
 
-correlación → bloqueo de cuenta → login exitoso tras desbloqueo — 
+Esta situación representa una **limitación real de la arquitectura de monitorización implementada**.
 
-reproduce la firma típica de un ataque de fuerza bruta exitoso tal como 
+Para detectar este tipo de actividad sería necesario complementar Wazuh con alguna de las siguientes opciones:
 
-la vería un analista SOC en un caso real, y demuestra que la 
+- Habilitar el registro del **Windows Filtering Platform** (Event ID 5157).
+- Incorporar un IDS de red como **Suricata** monitorizando el segmento de laboratorio.
 
-correlación de eventos (nivel 10) aporta muchísima más señal que 
+---
 
-cualquier evento individual (nivel 5) por sí solo.
+# Ataque 2: Fuerza bruta contra SMB
 
+**Técnica MITRE ATT&CK:** T1110 – Brute Force
 
+## Elección de la herramienta
 
-\---
+Inicialmente se intentó realizar el ataque utilizando **Hydra**:
+
+```bash
+hydra -l javier -P wordlist.txt smb://192.168.56.20
+```
+
+![Error de Hydra contra SMB2/3](../images/hydra-smb-error.png)
+
+La herramienta presentó problemas de compatibilidad con **SMB2/SMB3**, protocolo utilizado por defecto en Windows 10.
+
+Por este motivo se sustituyó por **NetExec (nxc)**, herramienta actualmente más utilizada para auditorías sobre SMB moderno.
+
+```bash
+nxc smb 192.168.56.20 -u javier -p wordlist.txt
+```
+
+![Ataque de fuerza bruta exitoso con nxc](../images/nxc-smb-bruteforce-success.png)
+
+### Justificación
+
+El cambio de herramienta se documenta porque refleja una situación habitual durante un pentest real.
+
+Aunque Hydra continúa siendo una herramienta muy conocida, presenta limitaciones frente a implementaciones modernas de SMB, mientras que NetExec mantiene compatibilidad completa con SMB2 y SMB3.
+
+Esta decisión demuestra una adaptación de la metodología al entorno objetivo en lugar de limitarse a ejecutar herramientas de forma automática.
+
+---
+
+## Detección en Wazuh
+
+La actividad fue detectada correctamente por Wazuh mediante varios niveles de reglas:
+
+- **Logon Failure - Unknown user or bad password**
+  - **Rule ID:** `60122`
+  - **Nivel:** 5
+  - Se registró un evento por cada intento fallido de autenticación.
+
+- **Multiple Windows Logon Failures**
+  - **Rule ID:** `60204`
+  - **Nivel:** 10
+  - Wazuh correlacionó automáticamente los múltiples intentos fallidos, generando una única alerta de mayor criticidad.
+
+- **Successful Remote Logon**
+  - **Rule ID:** `92652`
+  - **Nivel:** 6
+  - Detectó el inicio de sesión remoto exitoso una vez encontrada la contraseña válida.
+
+![Correlación de alertas de fuerza bruta en Wazuh](../images/wazuh-bruteforce-correlation.png)
+
+El detalle del evento confirmó:
+
+- Dirección IP de origen: **192.168.56.30** (Kali Linux).
+- Protocolo de autenticación: **NTLM V2**.
+
+![Detalle del evento de logon exitoso](../images/wazuh-logon-success-detail.png)
+
+---
+
+## Efecto observado
+
+Después de superar el umbral configurado de intentos fallidos, Windows bloqueó automáticamente la cuenta del usuario.
+
+Este comportamiento quedó registrado mediante el **Event ID 4740**, correspondiente al bloqueo de cuentas por política de seguridad.
+
+---
+
+## Análisis
+
+La secuencia completa registrada durante el ataque fue la siguiente:
+
+1. Múltiples intentos fallidos de autenticación.
+2. Generación de eventos individuales de fallo.
+3. Correlación automática de los eventos por parte de Wazuh.
+4. Bloqueo automático de la cuenta por Windows.
+5. Inicio de sesión exitoso tras el desbloqueo de la cuenta.
+
+Esta cadena de eventos reproduce el comportamiento esperado de un ataque de fuerza bruta observado desde la perspectiva de un analista SOC.
+
+Además, pone de manifiesto el valor de las reglas de correlación, ya que una única alerta de nivel alto proporciona mucha más información operativa que decenas de eventos individuales de baja criticidad.
